@@ -1,0 +1,67 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [Release]
+        target:
+          - {runner: ubuntu-24.04, platform: linux, arch: x64, cmake_arch: ""}
+          - {runner: macos-14, platform: macos, arch: arm64, cmake_arch: "-DCMAKE_OSX_ARCHITECTURES=arm64"}
+          - {runner: windows-2022, platform: windows, arch: x64, cmake_arch: "-A x64"}
+    runs-on: ${{ matrix.target.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: supercollider/supercollider
+          ref: Version-3.14.1
+          path: sdk
+          submodules: recursive
+      - name: Configure
+        shell: bash
+        run: >-
+          cmake -S . -B build -DSC_PATH="$PWD/sdk"
+          -DCMAKE_BUILD_TYPE=${{ matrix.config }}
+          -DSCSYNTH=ON -DSUPERNOVA=OFF ${{ matrix.target.cmake_arch }}
+      - name: Build
+        run: cmake --build build --config ${{ matrix.config }} --parallel 2
+      - name: Stage
+        run: cmake --install build --config Release --prefix stage/BelaPhaseVocoder
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path stage/BelaPhaseVocoder -DestinationPath ${{ github.repository_owner }}-PV_PitchShiftBela-${{ github.ref_name }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}.zip
+      - name: Package POSIX
+        if: runner.os != 'Windows'
+        run: |
+          cd stage
+          zip -r ../${{ github.repository_owner }}-PV_PitchShiftBela-${{ github.ref_name }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}.zip BelaPhaseVocoder
+          cd ..
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.target.platform }}-${{ matrix.target.arch }}
+          path: "*.zip"
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: package-*
+          merge-multiple: true
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          fail_on_unmatched_files: true
