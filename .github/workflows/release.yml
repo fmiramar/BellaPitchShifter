@@ -35,15 +35,18 @@ jobs:
       - name: Build
         run: cmake --build build --config ${{ matrix.config }} --parallel 2
       - name: Stage
-        run: cmake --install build --config Release --prefix stage/BelaPhaseVocoder
+        shell: bash
+        run: |
+          cmake --install build --config Release --prefix stage
+          mv stage/BelaPhaseVocoder stage/BellaPitchShifter
       - name: Package Windows
         if: runner.os == 'Windows'
-        run: Compress-Archive -Path stage/BelaPhaseVocoder -DestinationPath ${{ github.repository_owner }}-BelaPhaseVocoder-${{ github.ref_name }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}.zip
+        run: Compress-Archive -Path stage/BellaPitchShifter -DestinationPath ${{ github.repository_owner }}-BellaPitchShifter-${{ github.ref_name }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}.zip
       - name: Package POSIX
         if: runner.os != 'Windows'
         run: |
           cd stage
-          zip -r ../${{ github.repository_owner }}-BelaPhaseVocoder-${{ github.ref_name }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}.zip BelaPhaseVocoder
+          zip -r ../${{ github.repository_owner }}-BellaPitchShifter-${{ github.ref_name }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}.zip BellaPitchShifter
           cd ..
       - uses: actions/upload-artifact@v4
         with:

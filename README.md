@@ -1,4 +1,4 @@
-# BelaPhaseVocoder
+# BellaPitchShifter
 
 This project provides SuperCollider UGens that port the phase-vocoder pitch-shifting algorithm from Andrew McPherson's Bela real-time audio programming course (`fft-pitchshift` example).
 
