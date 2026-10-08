@@ -1,0 +1,5 @@
+/Users/fmm/Desktop/SuperCollider UGen Ports/03-jumble-science/BelaPhaseVocoder/release_stage/BelaPhaseVocoder/BelaPhaseVocoder.scx
+/Users/fmm/Desktop/SuperCollider UGen Ports/03-jumble-science/BelaPhaseVocoder/release_stage/BelaPhaseVocoder/Classes/PitchShiftBella.sc
+/Users/fmm/Desktop/SuperCollider UGen Ports/03-jumble-science/BelaPhaseVocoder/release_stage/BelaPhaseVocoder/Classes/PV_PitchShiftBella.sc
+/Users/fmm/Desktop/SuperCollider UGen Ports/03-jumble-science/BelaPhaseVocoder/release_stage/BelaPhaseVocoder/HelpSource/Classes/PitchShiftBella.schelp
+/Users/fmm/Desktop/SuperCollider UGen Ports/03-jumble-science/BelaPhaseVocoder/release_stage/BelaPhaseVocoder/HelpSource/Classes/PV_PitchShiftBella.schelp

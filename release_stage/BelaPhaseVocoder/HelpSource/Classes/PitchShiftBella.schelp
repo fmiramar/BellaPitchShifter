@@ -1,0 +1,64 @@
+class:: PitchShiftBella
+summary:: Phase-vocoder pitch shifter based on Bela lecture code
+categories:: UGens>Effects, UGens>FFT
+related:: Classes/PitchShift, Classes/PV_BinShift, Classes/PV_MagShift
+
+Description::
+
+PitchShiftBella is a real-time phase-vocoder pitch shifter derived from Andrew McPherson's Bela phase-vocoder course example `fft-pitchshift`. The Bela Knowledge Base describes the example as converting from phase to frequency, scaling the frequencies, and converting back to phase so pitch changes without changing timing.
+
+The algorithm relies on the fact that an FFT's discrete frequency bins are too coarse to accurately transpose harmonic content. Instead, it computes the true fractional frequency of the signal in each bin by measuring the phase advance between consecutive, overlapping analysis frames. By comparing this measured phase difference against the expected phase advance for the bin's center frequency, the exact instantaneous frequency is determined.
+
+During the shifting stage, these precise frequencies are multiplied by the pitch ratio and their corresponding magnitudes are mapped into the appropriate target bins. To ensure a continuous and artifact-free output, the synthesis phase for each shifted bin is reconstructed by accumulating the new instantaneous frequencies over time. An inverse FFT and overlap-add process then rebuilds the audio, altering the pitch without affecting the temporal envelope or duration of the source material.
+
+Internally, the UGen keeps a circular input buffer, analyses Hann-windowed FFT frames, estimates each bin's fractional frequency from phase advance, moves magnitudes to shifted synthesis bins, reconstructs phase from the shifted frequencies, and overlap-adds the inverse FFT frames. Compared with the Bela teaching example, this SuperCollider port runs the FFT work inside the UGen, uses SuperCollider's FFT backend, and magnitude-weights frequency collisions when multiple analysis bins land in the same synthesis bin.
+
+This is different from code::PitchShift::, which is a time-domain granular pitch shifter with dispersion controls. It is closer in spirit to SuperCollider's PV UGens, but unlike code::PV_BinShift:: it is a self-contained audio-rate effect rather than a chain UGen that requires user-managed FFT and IFFT buffers.
+
+classmethods::
+
+method::ar
+
+argument::in
+Mono input signal.
+
+argument::pitchRatio
+Pitch ratio. Values are clipped internally to `0.125..8`; large upward shifts discard bins that move above Nyquist.
+
+argument::fftSize
+FFT size in samples. Rounded up to a power of two and clipped to `256..8192`; this is fixed when the Synth starts.
+
+argument::hopSize
+Analysis hop size in samples. Clipped to at least one server block and at most half the FFT size; this is fixed when the Synth starts.
+
+argument::mul
+Output multiplier.
+
+argument::add
+Output offset.
+
+Examples::
+
+code::
+(
+{
+	var src = Saw.ar(110, 0.15);
+	PitchShiftBella.ar(src, MouseX.kr(0.5, 2.0, \exponential), 1024, 128) ! 2
+}.play
+)
+::
+
+code::
+(
+s.waitForBoot {
+	var srcbuf = Buffer.read(s, ExampleFiles.child);
+
+	{
+		var src = PlayBuf.ar(1, srcbuf, BufRateScale.kr(srcbuf), loop: 1);
+		// For live input instead:
+		// src = SoundIn.ar(0);
+		PitchShiftBella.ar(src, 2 ** (7 / 12), 2048, 256) ! 2
+	}.play
+}
+)
+::

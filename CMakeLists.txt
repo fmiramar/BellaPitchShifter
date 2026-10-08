@@ -28,14 +28,16 @@ sc_do_initial_compiler_config()
 sc_check_sc_path("${SC_PATH}")
 
 set(belaphasevocoder_cpp_files
-    src/PV_PitchShiftBella.cpp
+    src/BelaPhaseVocoder.cpp
 )
 
 set(belaphasevocoder_sc_files
+    Classes/PitchShiftBella.sc
     Classes/PV_PitchShiftBella.sc
 )
 
 set(belaphasevocoder_schelp_files
+    HelpSource/Classes/PitchShiftBella.schelp
     HelpSource/Classes/PV_PitchShiftBella.schelp
 )
 
@@ -49,9 +51,21 @@ sc_add_server_plugin(
 
 if(TARGET BelaPhaseVocoder_scsynth)
     set_target_properties(BelaPhaseVocoder_scsynth PROPERTIES OUTPUT_NAME "BelaPhaseVocoder")
+    target_include_directories(BelaPhaseVocoder_scsynth SYSTEM PRIVATE "${SC_PATH}/include/plugin_interface")
 endif()
 
 if(TARGET BelaPhaseVocoder_supernova)
     set_target_properties(BelaPhaseVocoder_supernova PROPERTIES OUTPUT_NAME "BelaPhaseVocoder_supernova")
+    target_include_directories(BelaPhaseVocoder_supernova SYSTEM PRIVATE "${SC_PATH}/include/plugin_interface")
 endif()
 
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(bella_pv_state_tests tests/pv_state_tests.cpp)
+    target_include_directories(bella_pv_state_tests SYSTEM PRIVATE
+        "${SC_PATH}/include/plugin_interface"
+        "${SC_PATH}/include/common"
+        "${SC_PATH}/common"
+    )
+    add_test(NAME bella_pv_state COMMAND bella_pv_state_tests)
+endif()

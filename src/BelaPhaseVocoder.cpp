@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdint>
 #include <new>
 
 InterfaceTable* ft;
@@ -20,7 +21,7 @@ enum InputIndex
     InputHopSize
 };
 
-struct PV_PitchShiftBella : public Unit
+struct PitchShiftBella : public Unit
 {
     int fftSize = 1024;
     int halfSize = 512;
@@ -53,6 +54,25 @@ struct PV_PitchShiftBella : public Unit
     scfft* inverseFFT = nullptr;
 };
 
+struct PV_PitchShiftBella : public Unit
+{
+    int fftSize = 0;
+    int halfSize = 0;
+    int numBins = 0;
+    int hopSize = 0;
+    int samplesSinceFrame = 0;
+    float pitchRatio = 1.0f;
+    float previousBuffer = -1.0f;
+    float* state = nullptr;
+    float* fftBuffer = nullptr; // Borrowed from the incoming chain for this frame.
+    float* lastInputPhases = nullptr;
+    float* lastOutputPhases = nullptr;
+    float* analysisMagnitudes = nullptr;
+    float* analysisFrequencies = nullptr;
+    float* synthesisMagnitudes = nullptr;
+    float* synthesisFrequencySums = nullptr;
+};
+
 inline int nextPowerOfTwo(int value) noexcept
 {
     int result = 1;
@@ -75,6 +95,8 @@ inline int clampHopSize(float input, int fftSize, int blockSize) noexcept
 
 inline float clampPitchRatio(float ratio) noexcept
 {
+    if (!std::isfinite(ratio))
+        return 1.0f;
     return std::clamp(ratio, 0.125f, 8.0f);
 }
 
@@ -107,12 +129,14 @@ inline float phaseAt(const float* fftBuffer, int bin, int halfSize) noexcept
     return std::atan2(fftBuffer[bin * 2 + 1], fftBuffer[bin * 2]);
 }
 
-void clearComplexSpectrum(PV_PitchShiftBella* unit) noexcept
+template <typename BellaUnit>
+void clearComplexSpectrum(BellaUnit* unit) noexcept
 {
     std::memset(unit->fftBuffer, 0, static_cast<size_t>(unit->fftSize) * sizeof(float));
 }
 
-void setSpectrumBin(PV_PitchShiftBella* unit, int bin, float magnitude, float phase) noexcept
+template <typename BellaUnit>
+void setSpectrumBin(BellaUnit* unit, int bin, float magnitude, float phase) noexcept
 {
     if (bin == 0) {
         unit->fftBuffer[0] = magnitude * std::cos(phase);
@@ -128,20 +152,15 @@ void setSpectrumBin(PV_PitchShiftBella* unit, int bin, float magnitude, float ph
     unit->fftBuffer[bin * 2 + 1] = magnitude * std::sin(phase);
 }
 
-void processFrame(PV_PitchShiftBella* unit) noexcept
+// Shared by the audio effect and the PV-chain effect. Analysis, bin mapping,
+// collision weighting, and phase reconstruction retain the original arithmetic.
+template <typename BellaUnit>
+void processSpectrum(BellaUnit* unit) noexcept
 {
     const int fftSize = unit->fftSize;
     const int halfSize = unit->halfSize;
     const int hopSize = unit->hopSize;
-    const int bufferSize = unit->bufferSize;
     const float ratio = clampPitchRatio(unit->pitchRatio);
-
-    for (int i = 0; i < fftSize; ++i) {
-        const int index = (unit->inputPointer + i - fftSize + bufferSize) & (bufferSize - 1);
-        unit->timeInput[i] = unit->inputBuffer[index] * unit->analysisWindow[i];
-    }
-
-    scfft_dofft(unit->forwardFFT);
 
     for (int bin = 0; bin <= halfSize; ++bin) {
         const float amplitude = magnitudeAt(unit->fftBuffer, bin, halfSize);
@@ -191,7 +210,18 @@ void processFrame(PV_PitchShiftBella* unit) noexcept
         setSpectrumBin(unit, bin, magnitude, phase);
         unit->lastOutputPhases[bin] = phase;
     }
+}
 
+void processFrame(PitchShiftBella* unit) noexcept
+{
+    const int fftSize = unit->fftSize;
+    const int bufferSize = unit->bufferSize;
+    for (int i = 0; i < fftSize; ++i) {
+        const int index = (unit->inputPointer + i - fftSize + bufferSize) & (bufferSize - 1);
+        unit->timeInput[i] = unit->inputBuffer[index] * unit->analysisWindow[i];
+    }
+    scfft_dofft(unit->forwardFFT);
+    processSpectrum(unit);
     scfft_doifft(unit->inverseFFT);
 
     for (int i = 0; i < fftSize; ++i) {
@@ -200,7 +230,7 @@ void processFrame(PV_PitchShiftBella* unit) noexcept
     }
 }
 
-void PV_PitchShiftBella_next(PV_PitchShiftBella* unit, int inNumSamples)
+void PitchShiftBella_next(PitchShiftBella* unit, int inNumSamples)
 {
     const float* in = IN(InputIn);
     const float* ratioIn = IN(InputPitchRatio);
@@ -238,7 +268,7 @@ void PV_PitchShiftBella_next(PV_PitchShiftBella* unit, int inNumSamples)
     unit->pitchRatio = ratioAudioRate ? ratio : nextRatio;
 }
 
-void PV_PitchShiftBella_Dtor(PV_PitchShiftBella* unit)
+void PitchShiftBella_Dtor(PitchShiftBella* unit)
 {
     SCWorld_Allocator alloc(ft, unit->mWorld);
 
@@ -262,9 +292,9 @@ void PV_PitchShiftBella_Dtor(PV_PitchShiftBella* unit)
     RTFree(unit->mWorld, unit->synthesisFrequencySums);
 }
 
-void PV_PitchShiftBella_Ctor(PV_PitchShiftBella* unit)
+void PitchShiftBella_Ctor(PitchShiftBella* unit)
 {
-    new (unit) PV_PitchShiftBella;
+    new (unit) PitchShiftBella;
 
     unit->fftSize = clampPowerOfTwoFFTSize(IN0(InputFFTSize));
     unit->halfSize = unit->fftSize / 2;
@@ -323,13 +353,89 @@ void PV_PitchShiftBella_Ctor(PV_PitchShiftBella* unit)
                                     kBackward, alloc);
     ClearUnitIfMemFailed(unit->forwardFFT && unit->inverseFFT);
 
-    SETCALC(PV_PitchShiftBella_next);
+    SETCALC(PitchShiftBella_next);
     ClearUnitOutputs(unit, 1);
+}
+
+void PV_PitchShiftBella_next(PV_PitchShiftBella* unit, int /*inNumSamples*/)
+{
+    // PV units run once per server block. Count samples, not control ticks.
+    unit->samplesSinceFrame = static_cast<int>(std::min<int64_t>(
+        static_cast<int64_t>(unit->samplesSinceFrame) + FULLBUFLENGTH, 0x40000000));
+    OUT0(0) = -1.0f;
+    const float chain = IN0(0);
+    if (!std::isfinite(chain) || chain < 0.0f || chain != std::floor(chain)
+        || static_cast<double>(chain) > UINT32_MAX)
+        return;
+
+    const auto index = static_cast<uint32_t>(chain);
+    auto* world = unit->mWorld;
+    SndBuf* buf = nullptr;
+    if (index < world->mNumSndBufs) {
+        buf = world->mSndBufs + index;
+    } else {
+        const auto localIndex = index - world->mNumSndBufs;
+        auto* parent = unit->mParent;
+        if (!parent || !parent->mLocalSndBufs || parent->localBufNum < 0
+            || localIndex > static_cast<uint32_t>(parent->localBufNum))
+            return;
+        buf = parent->mLocalSndBufs + localIndex;
+    }
+    LOCK_SNDBUF(buf);
+    const int size = buf->samples;
+    if (!buf->data || buf->channels != 1 || size < 256 || size > 8192 || (size & (size - 1)) != 0)
+        return;
+
+    if (unit->fftSize != size) {
+        const int bins = size / 2 + 1;
+        auto* state = static_cast<float*>(RTAlloc(world, static_cast<size_t>(bins) * 6 * sizeof(float)));
+        ClearFFTUnitIfMemFailed(state);
+        RTFree(world, unit->state);
+        unit->state = state;
+        unit->fftSize = size;
+        unit->halfSize = size / 2;
+        unit->numBins = bins;
+        unit->lastInputPhases = state;
+        unit->lastOutputPhases = state + bins;
+        unit->analysisMagnitudes = state + 2 * bins;
+        unit->analysisFrequencies = state + 3 * bins;
+        unit->synthesisMagnitudes = state + 4 * bins;
+        unit->synthesisFrequencySums = state + 5 * bins;
+        std::memset(state, 0, static_cast<size_t>(bins) * 6 * sizeof(float));
+    } else if (unit->previousBuffer != chain) {
+        std::memset(unit->state, 0, static_cast<size_t>(unit->numBins) * 6 * sizeof(float));
+    }
+
+    // Other PV processors may have converted the buffer to polar coordinates.
+    ToComplexApx(buf);
+    unit->fftBuffer = buf->data;
+    unit->pitchRatio = IN0(1);
+    unit->hopSize = unit->samplesSinceFrame;
+    processSpectrum(unit);
+    unit->samplesSinceFrame = 0;
+    unit->previousBuffer = chain;
+    buf->coord = coord_Complex;
+    OUT0(0) = chain;
+}
+
+void PV_PitchShiftBella_Ctor(PV_PitchShiftBella* unit)
+{
+    new (unit) PV_PitchShiftBella;
+    SETCALC(PV_PitchShiftBella_next);
+    // Downstream IFFT/PV constructors need the buffer identity immediately.
+    // Frame processing still starts on the first actual FFT update.
+    OUT0(0) = IN0(0);
+}
+
+void PV_PitchShiftBella_Dtor(PV_PitchShiftBella* unit)
+{
+    RTFree(unit->mWorld, unit->state);
 }
 } // namespace
 
 PluginLoad(BelaPhaseVocoder)
 {
     ft = inTable;
+    DefineDtorUnit(PitchShiftBella);
     DefineDtorUnit(PV_PitchShiftBella);
 }

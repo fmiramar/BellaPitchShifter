@@ -38,12 +38,12 @@ jobs:
         run: cmake --install build --config Release --prefix stage/BelaPhaseVocoder
       - name: Package Windows
         if: runner.os == 'Windows'
-        run: Compress-Archive -Path stage/BelaPhaseVocoder -DestinationPath ${{ github.repository_owner }}-PV_PitchShiftBela-${{ github.ref_name }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}.zip
+        run: Compress-Archive -Path stage/BelaPhaseVocoder -DestinationPath ${{ github.repository_owner }}-BelaPhaseVocoder-${{ github.ref_name }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}.zip
       - name: Package POSIX
         if: runner.os != 'Windows'
         run: |
           cd stage
-          zip -r ../${{ github.repository_owner }}-PV_PitchShiftBela-${{ github.ref_name }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}.zip BelaPhaseVocoder
+          zip -r ../${{ github.repository_owner }}-BelaPhaseVocoder-${{ github.ref_name }}-${{ matrix.target.platform }}-${{ matrix.target.arch }}.zip BelaPhaseVocoder
           cd ..
       - uses: actions/upload-artifact@v4
         with:
